@@ -358,7 +358,34 @@ PASV:
 		port |= portOctet << (byte(1-i) * 8)
 	}
 
-	return net.JoinHostPort(ip.String(), strconv.Itoa(port)), nil
+	// Validate passive reply address
+	passiveAddress := ip.String()
+	isPrivateAddress, _ := isPrivateIPAddress(passiveAddress)
+	if (isPrivateAddress) {
+		connectionAddress := strings.Split(pconn.controlConn.RemoteAddr().String(), ":")[0]
+		isPrivateAddress, err = isPrivateIPAddress(connectionAddress)
+		if (err == nil && !isPrivateAddress) {
+			passiveAddress = connectionAddress
+			pconn.debug("Got unroutable address from passive reply. Using server address...")
+		}
+	}
+
+	return net.JoinHostPort(passiveAddress, strconv.Itoa(port)), nil
+}
+
+func isPrivateIPAddress(ip string) (bool, error) {
+    var err error
+    isPrivate := false
+    ipAddr := net.ParseIP(ip)
+    if ipAddr == nil {
+        err = fmt.Errorf("Invalid IP: %s", ip)
+    } else {
+        _, private24BitBlock, _ := net.ParseCIDR("10.0.0.0/8")
+        _, private20BitBlock, _ := net.ParseCIDR("172.16.0.0/12")
+        _, private16BitBlock, _ := net.ParseCIDR("192.168.0.0/16")
+        isPrivate = private24BitBlock.Contains(ipAddr) || private20BitBlock.Contains(ipAddr) || private16BitBlock.Contains(ipAddr)
+    }
+    return isPrivate, err
 }
 
 type dataConn struct {
